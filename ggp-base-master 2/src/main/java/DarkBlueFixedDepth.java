@@ -14,7 +14,6 @@ import org.ggp.base.util.statemachine.cache.CachedStateMachine;
 import org.ggp.base.util.statemachine.exceptions.GoalDefinitionException;
 import org.ggp.base.util.statemachine.exceptions.MoveDefinitionException;
 import org.ggp.base.util.statemachine.exceptions.TransitionDefinitionException;
-import org.ggp.base.util.statemachine.implementation.prover.ProverStateMachine;
 
 public class DarkBlueFixedDepth extends StateMachineGamer {
 
@@ -25,7 +24,8 @@ public class DarkBlueFixedDepth extends StateMachineGamer {
 	@Override
 	public StateMachine getInitialStateMachine() {
 		// TODO Auto-generated method stub
-		return new CachedStateMachine(new ProverStateMachine());
+		//return new CachedStateMachine(new ProverStateMachine());
+		return new CachedStateMachine(new PropNetStateMachine2());
 	}
 
 	@Override
@@ -59,7 +59,7 @@ public class DarkBlueFixedDepth extends StateMachineGamer {
 		int level = 0;
 		Move bestmove = move;
 
-		while(timeout - System.currentTimeMillis() > 57000) {
+		while(timeout - System.currentTimeMillis() > 2000) {
 			bestmove = move;
 			for(int i = 0; i < moves.size(); i++) {
 				Move nextMove = moves.get(i);
@@ -98,7 +98,7 @@ public class DarkBlueFixedDepth extends StateMachineGamer {
 			throws GoalDefinitionException, MoveDefinitionException, TransitionDefinitionException {
 
 		if(machine.isTerminal(state)) return machine.getGoal(state, role);
-		if(timeout - System.currentTimeMillis() <= 57000) return -1;
+		if(timeout - System.currentTimeMillis() <= 2000) return -1;
 		if(level < 0) {
 			//return 0;
 			//return mobility(machine, role, state);

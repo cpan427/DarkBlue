@@ -1,6 +1,11 @@
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.Semaphore;
 
 import org.ggp.base.util.statemachine.MachineState;
 import org.ggp.base.util.statemachine.Move;
@@ -11,8 +16,6 @@ import org.ggp.base.util.statemachine.exceptions.MoveDefinitionException;
 import org.ggp.base.util.statemachine.exceptions.TransitionDefinitionException;
 
 public class Node {
-
-
 	private Role role;
 	private int id;
 	private MachineState state;
@@ -28,8 +31,14 @@ public class Node {
 	private List<List<List<Move>>> moves;
 	private List<ArrayList<Node>> grandChildren;
 	private int child;
+	private static int count = 3;
+	private static ExecutorService threadPool = Executors.newCachedThreadPool(); /////new
+	private static Semaphore depthDiveChecker = new Semaphore(count);
+	private static int total = 0;
+
 	static //private int child;
 	Random rand = new Random();
+
 	Node (StateMachine machine, Role role, MachineState state, Node parent, int myChildIndex, int myGrandchildIndex) throws MoveDefinitionException{
 	 this.role = role;
 	 this.id = role.hashCode();
@@ -74,7 +83,6 @@ public class Node {
 	    grandChildren.add(new ArrayList<Node>());
 	 }
 	}
-
 
 	//never expand a node that's a terminal state.getNextState will still give states but will have errors. So if at terminal state don't expand more nodes.
 	public Node select() throws TransitionDefinitionException, MoveDefinitionException{//returns a Node
@@ -148,7 +156,7 @@ public class Node {
 		}
 		else{
 			try{
-				return montecarlo(this.machine, this.role, this.state, 1);
+				return montecarlo(this.machine, this.role, this.state, count);
 			}
 			catch(StackOverflowError e){
 				return 0;
@@ -156,16 +164,54 @@ public class Node {
 		}
 	}
 
-	public static int montecarlo(StateMachine machine, Role role, MachineState state, int count) throws MoveDefinitionException, GoalDefinitionException, TransitionDefinitionException {
-		int total = 0;
-		for(int i = 0; i < count; i++) {
-			total = total + depthCharge(machine, role, state);
-		}
-
-		return total/count;
+	/*synchronized static void addResult(int addition){
+		total += addition;
 	}
 
+	private static void innerLoopLogic(StateMachine machine, Role role, MachineState state){
+		try{
+        	int temp = depthCharge(machine, role, state);
+        	addResult(temp);
+        }catch(Exception e){
+			System.out.println(e);
+        }
+	}*/
+
+	public static int montecarlo(StateMachine machine, Role role, MachineState state, int count) throws MoveDefinitionException, GoalDefinitionException, TransitionDefinitionException {
+		int total = 0;
+		System.out.println("Here");
+		ArrayList<Future<String>> results = new ArrayList<Future<String>>();
+		for(int i = 0; i < count; i++) {
+			try {
+				System.out.print("Waiting....");
+				depthDiveChecker.acquire(1);
+				results.add(threadPool.submit(new MyRunnable(machine, role, state, rand, depthDiveChecker)));
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+			//total = total + depthCharge(machine, role, state);
+		}
+		try {
+			System.out.println("Waiting.... for them to finish");
+			depthDiveChecker.acquire(count);
+			System.out.println("Passed");
+			for (int i = 0; i < count ; i++){
+				Integer curr = Integer.parseInt(results.get(i).get());
+				System.out.println(curr);
+				total += curr;
+			}
+			depthDiveChecker.release(5);
+		} catch (InterruptedException | NumberFormatException | ExecutionException e) {
+			// TODO Auto-generated catch block
+			depthDiveChecker.release(5);
+			e.printStackTrace();
+		}
+		return total/count; //Isn't this a double?????
+	}
+
+	static int it=0;
 	public static int depthCharge(StateMachine machine, Role role, MachineState state) throws MoveDefinitionException, GoalDefinitionException, TransitionDefinitionException {
+
 		if(machine.isTerminal(state)) return machine.getGoal(state, role);
 		List<Role> roles = machine.getRoles();
 		List<Move> moves = new ArrayList<Move>();
@@ -178,6 +224,7 @@ public class Node {
 		}
 
 		MachineState newState = machine.getNextState(state, moves);
+		System.out.println(it++);
 		return depthCharge(machine, role, newState);
 	}
 	public int bestMoveIndex(){// returns int:

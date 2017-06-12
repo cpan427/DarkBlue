@@ -29,7 +29,7 @@ import org.ggp.base.util.statemachine.implementation.prover.query.ProverQueryBui
 
 
 @SuppressWarnings("unused")
-public class PropNetStateMachine extends StateMachine {
+public class PropNetStateMachine2 extends StateMachine {
     /** The underlying proposition network  */
     private PropNet propNet;
     /** The topological ordering of the propositions */
@@ -45,9 +45,16 @@ public class PropNetStateMachine extends StateMachine {
     @Override
     public void initialize(List<Gdl> description) {
         try {
-            propNet = OptimizingPropNetFactory.create(description);
-            roles = propNet.getRoles();
-//            ordering = getOrdering();
+
+        	//Subgoal reordering -- simplest subgoals first
+        	//Analyze GDL sentence and reorder them
+
+            propNet = OptimizingPropNetFactory.create(description); //Creates the data structure
+            roles = propNet.getRoles(); // Get the players in the game
+            //ordering = getOrdering();
+
+
+
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
@@ -85,22 +92,64 @@ public class PropNetStateMachine extends StateMachine {
     	}
     }
 
+    private boolean computeViews(Component prop) throws Exception{
+
+    	//Cases where the passed component is a proposition
+    	if(prop instanceof Proposition) {
+    		return markProposition((Proposition) prop);
+    	}
+
+    	//If a conjunction, negation, transition, or constant
+    	Set<Component> sources = prop.getInputs();
+    	if(prop instanceof And){
+    		for(Component source : sources){
+    			if(computeViews(source)) return true;
+    		}
+    		return false;
+    	} else if(prop instanceof Or){
+    		for(Component source : sources) {
+    			if(!computeViews(source)) return false;
+    		}
+    		return true;
+    	} else if(prop instanceof Not){
+    		if(sources.size() != 1) throw new Exception("bad input");
+    		return !computeViews(sources.iterator().next());
+
+    	} else if(prop instanceof Constant){
+    		return prop.getValue();
+
+    	} else if(prop instanceof Transition){
+    		return prop.getValue();
+    	}
+
+    	//If nothing else, its a view.
+    	if(sources.size() == 1) return computeViews(prop.getSingleInput());
+    	return false;
+    }
+
+    //Dealing with marking a proposition.
+    private boolean markProposition(Proposition prop) throws InterruptedException {
+    	if(propNet.getBasePropositions().containsValue((Proposition) prop)) return prop.getValue();
+		if(propNet.getInputPropositions().containsValue((Proposition) prop)) return prop.getValue();
+		if(propNet.getInitProposition().equals((Proposition) prop)) return prop.getValue();
+
+		return false;
+    }
+
     /**
      * Computes if the state is terminal. Should return the value
      * of the terminal proposition for the state.
      */
     @Override
     public boolean isTerminal(MachineState state) {
-        if(state == null) {
-        	return false;
-        }
-        markbases(state);
-        try {
-        	return computeView(propNet.getTerminalProposition());
-        } catch (Exception e){
-        	e.printStackTrace();
-        	return false;
-        }
+    	markbases(state);
+    	try {
+			return computeViews(propNet.getTerminalProposition());
+		} catch (Exception e) {
+			System.out.println("Compute Views must be changed!");
+			e.printStackTrace();
+			return false;
+		}
     }
 
     /**
@@ -109,22 +158,24 @@ public class PropNetStateMachine extends StateMachine {
      * is true for that role. If there is not exactly one goal
      * proposition true for that role, then you should throw a
      * GoalDefinitionException because the goal is ill-defined.
-     * @throws GoalDefinitionException
      */
     @Override
-    public int getGoal(MachineState state, Role role) throws GoalDefinitionException {
+    public int getGoal(MachineState state, Role role)
+            throws GoalDefinitionException {
+
         markbases(state);
         Set<Proposition> goals = propNet.getGoalPropositions().get(role);
-        for(Proposition goal : goals){
-        	try{
-        		if(computeView(goal)) {
-        			return getGoalValue(goal.getName());
-        		}
-        	} catch(Exception e){
-        		e.printStackTrace();
-        		throw new GoalDefinitionException(state, role);
-        	}
+        for(Proposition goal : goals) {
+        	try {
+				if(computeViews(goal)) {
+					return getGoalValue(goal);
+				}
+			} catch (Exception e) {
+				System.out.println("Something wrong with computing view");
+				e.printStackTrace();
+			}
         }
+
         return 0;
     }
 
@@ -135,14 +186,14 @@ public class PropNetStateMachine extends StateMachine {
      */
     @Override
     public MachineState getInitialState() {
-        propNet.getInitProposition().setValue(true);
-        Set<GdlSentence> newState = new HashSet<GdlSentence>();
+    	propNet.getInitProposition().setValue(true);
+        Set<GdlSentence> contents = new HashSet<GdlSentence>();
 
-        for(Proposition prop : propNet.getBasePropositions().values()) {
-        	if(prop.getSingleInput().getSingleInput().getValue()) newState.add(prop.getName());
+        for(Proposition p : propNet.getBasePropositions().values()) {
+        	if(p.getSingleInput().getSingleInput().getValue()) contents.add(p.getName());
         }
 
-        MachineState state = new MachineState(newState);
+        MachineState state = new MachineState(contents);
         propNet.getInitProposition().setValue(false);
         return state;
     }
@@ -163,61 +214,9 @@ public class PropNetStateMachine extends StateMachine {
         return actions;
     }
 
-    private boolean computeView(Component comp) throws Exception{
-    	if(comp instanceof Proposition){
-    		try{
-    			Set<Component> sourceProps = comp.getInputs();
-
-    	    	if(sourceProps.size() == 1 && sourceProps.iterator().next() instanceof Transition) return comp.getValue();
-    	    	else if(sourceProps.size() == 0) return comp.getValue();
-
-    	    	if(sourceProps.size() == 1){
-    	    		Component source = sourceProps.iterator().next();
-    	    		return computeView(source);
-    	    	}
-
-    	    	if(comp.equals(propNet.getInitProposition())) return false;
-    	    	return false;
-
-    		} catch(Exception e){
-    			e.printStackTrace();
-    			return false;
-    		}
-    	}
-    	else {
-    		try{
-    			Set<Component> sources = comp.getInputs();
-    	    	if(comp instanceof And){
-    	    		for(Component source : sources){
-    	    			if(!computeView(source)) return false;
-    	    		}
-    	    		return true;
-    	    	} else if(comp instanceof Or){
-    	    		for(Component source : sources) {
-    	    			if(computeView(source)) return true;
-    	    		}
-    	    		return false;
-
-    	    	} else if(comp instanceof Not){
-    	    		if(sources.size() != 1) throw new Exception("Doesn't work");
-    	    		return !computeView(sources.iterator().next());
-
-    	    	} else if(comp instanceof Constant){
-    	    		return comp.getValue();
-
-    	    	} else {
-    	    		boolean trans = comp instanceof Transition;
-    	    		boolean prop = comp instanceof Proposition;
-    	    		throw new Exception("Nothing works");
-    	    	}
-
-    		} catch(Exception e){
-    			e.printStackTrace();
-    			return false;
-    		}
-    	}
-    }
-
+    /**
+     * Computes the legal moves for role in state.
+     */
     @Override
     public List<Move> getLegalMoves(MachineState state, Role role) {
     	markbases(state);
@@ -226,8 +225,9 @@ public class PropNetStateMachine extends StateMachine {
 
     	for(Proposition prop : legalprops) {
     		try {
-				if(computeView(prop)){
+				if(computeViews(prop)){
 					actions.add(getMoveFromProposition(prop));
+					System.out.println(actions.toString());
 				}
 			} catch (Exception e) {
 				System.out.print("Some sort of error getting moves");
@@ -239,6 +239,9 @@ public class PropNetStateMachine extends StateMachine {
         return actions;
     }
 
+    /**
+     * Computes the next state given state and the list of moves.
+     */
     @Override
     public MachineState getNextState(MachineState state, List<Move> moves)
             throws TransitionDefinitionException {
@@ -255,7 +258,7 @@ public class PropNetStateMachine extends StateMachine {
     	Set<GdlSentence> nexts = new HashSet<GdlSentence>();
     	for(GdlSentence base : bases.keySet()) {
     		try {
-				if(computeView(bases.get(base).getSingleInput().getSingleInput())) nexts.add(base);
+				if(computeViews(bases.get(base).getSingleInput().getSingleInput())) nexts.add(base);
 
 			} catch (Exception e) {
 				System.out.println("Can't find the next state from base proposition");
@@ -294,6 +297,8 @@ public class PropNetStateMachine extends StateMachine {
         List<Proposition> propositions = new ArrayList<Proposition>(propNet.getPropositions());
 
         // TODO: Compute the topological ordering.
+
+
         return order;
     }
 
@@ -344,9 +349,9 @@ public class PropNetStateMachine extends StateMachine {
      * @param goalProposition
      * @return the integer value of the goal proposition
      */
-    private int getGoalValue(GdlSentence sent)
+    private int getGoalValue(Proposition goalProposition)
     {
-        GdlRelation relation = (GdlRelation) sent;
+        GdlRelation relation = (GdlRelation) goalProposition.getName();
         GdlConstant constant = (GdlConstant) relation.get(1);
         return Integer.parseInt(constant.toString());
     }
