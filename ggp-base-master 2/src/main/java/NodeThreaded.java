@@ -15,7 +15,7 @@ import org.ggp.base.util.statemachine.exceptions.GoalDefinitionException;
 import org.ggp.base.util.statemachine.exceptions.MoveDefinitionException;
 import org.ggp.base.util.statemachine.exceptions.TransitionDefinitionException;
 
-public class Node {
+public class NodeThreaded {
 	private Role role;
 	private int id;
 	private MachineState state;
@@ -39,7 +39,7 @@ public class Node {
 	static //private int child;
 	Random rand = new Random();
 
-	Node (StateMachine machine, Role role, MachineState state, Node parent, int myChildIndex, int myGrandchildIndex) throws MoveDefinitionException{
+	NodeThreaded (StateMachine machine, Role role, MachineState state, Node parent, int myChildIndex, int myGrandchildIndex) throws MoveDefinitionException{
 	 this.role = role;
 	 this.id = role.hashCode();
 	 this.state = state;
@@ -56,7 +56,7 @@ public class Node {
 	 this.grandChildren = new ArrayList<ArrayList<Node>>();
 	 this.child = 0;
 
-	 List<Move> movesp = machine.getLegalMoves(state, role);
+	 List<Move> movesp = machine.getLegalMoves(state, role);  
 	 for (int i = 0; i < movesp.size(); i++) {
 		 List<List<Move>> movesi;
 		 try{
